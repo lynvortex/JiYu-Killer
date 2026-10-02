@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 rem ============================================================
 rem  JiYu Killer - offline build (no NuGet / no internet needed)
 rem  Uses Roslyn csc from VS Build Tools + .NET Framework 4.8
@@ -40,6 +40,26 @@ if errorlevel 1 (
   exit /b 1
 )
 echo BUILD OK: %OUT%\JiYuKiller.exe
+
+
+rem --- x86 build (for 32-bit-only hook scenarios) ---
+%CSC% -nologo -target:winexe -platform:x86 -langversion:7.3 -optimize+ -codepage:65001 ^
+  -out:"%OUT%\x86\JiYuKiller.x86.exe" ^
+  -win32manifest:"%ROOT%assets\app.manifest" ^
+  -win32icon:"%ROOT%assets\Control.ico" ^
+  -r:"%FX%\mscorlib.dll" ^
+  -r:"%FX%\System.dll" ^
+  -r:"%FX%\System.Core.dll" ^
+  -r:"%FX%\System.Xaml.dll" ^
+  -r:"%WPF%\PresentationFramework.dll" ^
+  -r:"%WPF%\PresentationCore.dll" ^
+  -r:"%WPF%\WindowsBase.dll" ^
+  "%SRC%\*.cs"
+if errorlevel 1 (
+  echo X86 BUILD FAILED
+) else (
+  echo BUILD OK: %OUT%\x86\JiYuKiller.x86.exe
+)
 
 if /i "%~1"=="test" call :test
 exit /b 0

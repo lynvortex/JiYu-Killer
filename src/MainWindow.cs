@@ -10,7 +10,9 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Interop;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using JiYuKiller.Core;
 
 namespace JiYuKiller.UI
@@ -19,7 +21,7 @@ namespace JiYuKiller.UI
     /// 主窗口：深色/浅色主题 + 侧边栏导航。
     /// 主题切换通过"保存设置并重建窗口"实现（Settings.Theme）。
     /// </summary>
-    internal class MainWindow : Window
+    internal partial class MainWindow : Window
     {
         private ComboBox _jyComboBox;
         private ComboBox _orderComboBox;
@@ -50,6 +52,12 @@ namespace JiYuKiller.UI
         private int _historyIndex = -1;
         private bool _busy;
         private volatile bool _closed;
+        private TextBlock _statusPanel;
+        private DispatcherTimer _statusTimer;
+        private CornerHotzone _hotzone;
+        private CheckBox _cornerToggle;
+        private CheckBox _multiPortToggle;
+        private TrayIcon _tray;
 
         public MainWindow()
         {
@@ -67,7 +75,11 @@ namespace JiYuKiller.UI
             FontFamily = UiUtil.AppFont;
             Background = UiUtil.C.Window;
             Icon = UiUtil.LoadAppIcon();
-            SourceInitialized += (s, e) => EnableDarkTitleBar();
+            SourceInitialized += (s, e) =>
+            {
+                EnableDarkTitleBar();
+                SetupTrayAndSelfHotkey();
+            };
             Closed += (s, e) => _closed = true;
             BuildLayout();
             PreviewKeyDown += OnPreviewKeyDown;
@@ -79,7 +91,7 @@ namespace JiYuKiller.UI
             try
             {
                 int on = Settings.Theme == "dark" ? 1 : 0;
-                NativeMethods.DwmSetWindowAttribute(
+                DwmHelper.DwmSetWindowAttribute(
                     new System.Windows.Interop.WindowInteropHelper(this).Handle, 20, ref on, 4);
             }
             catch { }
@@ -181,10 +193,12 @@ namespace JiYuKiller.UI
             _pages["remote"] = BuildRemotePanel();
             _pages["danger"] = BuildDangerPanel();
             _pages["tools"] = BuildToolsPanel();
+            _pages["battle"] = BuildBattlePanel();
 
             AddNavItem(stack, "remote", "远程控制");
             AddNavItem(stack, "danger", "关闭极域 (高危)");
             AddNavItem(stack, "tools", "IP.txt 与本机");
+            AddNavItem(stack, "battle", "进程与对抗");
 
             stack.Children.Add(new Border
             {
@@ -474,6 +488,18 @@ namespace JiYuKiller.UI
             Grid.SetColumn(optHint, 6);
             optRow.Children.Add(optHint);
             stack.Children.Add(optRow);
+
+            var multiPort = new CheckBox
+            {
+                Content = "多端口齐发 (4605 + 4705 + 4988, 兼容全部极域版本)",
+                FontSize = 12.5,
+                Foreground = UiUtil.C.Text2,
+                Margin = new Thickness(0, 8, 0, 2),
+            };
+            multiPort.IsChecked = JyVersion.MultiPort;
+            multiPort.Checked += (s, e) => { JyVersion.MultiPort = true; AddInfo("已启用多端口齐发, 每个目标向三个候选端口各发一份。"); };
+            multiPort.Unchecked += (s, e) => { JyVersion.MultiPort = false; AddInfo("已关闭多端口齐发。"); };
+            stack.Children.Add(multiPort);
 
             return UiUtil.Card("远程控制", stack);
         }
@@ -1441,7 +1467,45 @@ namespace JiYuKiller.UI
             w.ShowDialog();
         }
 
+        // ---- Alt+C 隐身热键 (切换主窗口显示/隐藏) ----
+        private const int WmHotkeySelf = 0x0312;
+        private const int HkSelfId = 4;
+        private bool _selfHidden;
+
+        private void SetupTrayAndSelfHotkey()
+        {
+            var src = (HwndSource)HwndSource.FromVisual(this);
+            src.AddHook(WndProcSelfHotkey);
+            NativeMethods.RegisterHotKey(src.Handle, HkSelfId, 0x1 | 0x4000, 0x43);   // Alt+C
+            _tray = new TrayIcon(this);
+            _tray.DoubleClick += () =>
+            {
+                Show();
+                WindowState = WindowState.Normal;
+                Activate();
+            };
+            _tray.Show();
+        }
+
+        private IntPtr WndProcSelfHotkey(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WmHotkeySelf && wParam.ToInt32() == HkSelfId)
+            {
+                _selfHidden = !_selfHidden;
+                Visibility = _selfHidden ? Visibility.Hidden : Visibility.Visible;
+                if (!_selfHidden) { WindowState = WindowState.Normal; Activate(); }
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
         private static class NativeMethods
+        {
+            [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+            public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint vk);
+        }
+
+        private static class DwmHelper
         {
             [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
             public static extern void DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);

@@ -1,22 +1,36 @@
 using System;
-using System.Collections.Generic;
 
 namespace JiYuKiller.Core
 {
-    /// <summary>极域版本选择对应的端口与消息包头（对应原版 jy_comboBox / set_version）。</summary>
+    /// <summary>
+    /// 极域版本选择对应的端口与消息包头。
+    /// 端口表依据：冷麟极域课堂反控制程序反编译源码（2010→4605 / 2016→4705 / 2021→4988）
+    /// 与 jiyu_windowing（4605=2010及以前 / 4705=2010以后）。
+    /// 注: 不同批次的 2021 版在 4705/4988 上都有报告, 因此提供"多端口齐发"。
+    /// </summary>
     internal static class JyVersion
     {
-        public const int Port4605 = 4605;   // 2010/2015/2016 版
-        public const int Port4705 = 4705;   // 2021 版
+        public const int Port4605 = 4605;
+        public const int Port4705 = 4705;
+        public const int Port4988 = 4988;
 
-        public static readonly string[] Names = { "2010版", "2015版", "2016版", "2021版" };
+        public static readonly string[] Names = { "2010版", "2015版", "2016版", "2021新版", "2021旧版" };
+        public static readonly int[] Ports = { Port4605, Port4605, Port4705, Port4988, Port4705 };
 
-        /// <summary>当前选中的版本下标（0..3），默认 2016版。</summary>
+        /// <summary>当前选中的版本下标（0..4），默认 2016版。</summary>
         public static int SelectedIndex = 2;
+
+        /// <summary>多端口齐发：发送时向所有不同候选端口各发一份。</summary>
+        public static bool MultiPort = false;
+
+        public static int[] AllDistinctPorts
+        {
+            get { return new[] { Port4605, Port4705, Port4988 }; }
+        }
 
         public static int Port
         {
-            get { return SelectedIndex >= 3 ? Port4705 : Port4605; }
+            get { return Ports[SelectedIndex]; }
         }
 
         public static void SetSelected(int index)

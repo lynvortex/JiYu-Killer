@@ -182,7 +182,9 @@ static class PacketTest
         JyVersion.SetSelected(0);
         Check("2010 port=4605", JyVersion.Port == 4605);
         JyVersion.SetSelected(3);
-        Check("2021 port=4705", JyVersion.Port == 4705);
+        Check("2021新版 port=4988", JyVersion.Port == 4988);
+        JyVersion.SetSelected(4);
+        Check("2021旧版 port=4705", JyVersion.Port == 4705);
 
         // mythwarehelper 移植: knock1 密码解码
         // 构造已知明文的编码: "P@ssw0rd" UTF-16LE + XOR(0x15,0x0F,0x0F,0x15 循环) + 双零终止

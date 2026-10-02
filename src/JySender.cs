@@ -226,9 +226,19 @@ namespace JiYuKiller.Core
                                     try
                                     {
                                         byte[] payload = builder(ip);
-                                        socket.SendTo(payload, new IPEndPoint(ip, JyVersion.Port));
-                                        stats.Sent++;
-                                        log("已发送至 " + ip + " (" + payload.Length + " 字节)");
+                                        if (JyVersion.MultiPort)
+                                        {
+                                            foreach (int port in JyVersion.AllDistinctPorts)
+                                                socket.SendTo(payload, new IPEndPoint(ip, port));
+                                            stats.Sent++;
+                                            log("已发送至 " + ip + " (多端口 4605/4705/4988)");
+                                        }
+                                        else
+                                        {
+                                            socket.SendTo(payload, new IPEndPoint(ip, JyVersion.Port));
+                                            stats.Sent++;
+                                            log("已发送至 " + ip + " (" + payload.Length + " 字节)");
+                                        }
                                     }
                                     catch (Exception ex)
                                     {

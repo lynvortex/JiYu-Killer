@@ -78,6 +78,9 @@ namespace JiYuKiller.Core
         private const uint ProcessSuspendResume = 0x0800;
         private static readonly string[] JyProcessNames = { "StudentMain", "NCStu" };
 
+        /// <summary>极域是否处于被本程序挂起的状态（状态面板用）。</summary>
+        public static bool JyFrozen;
+
         /// <summary>挂起/恢复本机极域进程。suspend=true 挂起, false 恢复。返回描述文本。</summary>
         public static string SetJySuspended(bool suspend)
         {
@@ -102,6 +105,7 @@ namespace JiYuKiller.Core
                     }
                 }
             }
+            if (ok > 0) JyFrozen = suspend;
             if (ok == 0 && fail == 0)
                 return suspend ? "没有找到运行中的极域进程, 无需挂起。" : "没有找到被挂起的极域进程。";
             return (suspend ? "已挂起 " : "已恢复 ") + ok + " 个极域进程"

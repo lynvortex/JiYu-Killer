@@ -10,6 +10,13 @@ namespace JiYuKiller
         [STAThread]
         private static void Main()
         {
+            if (!AppRuntime.AcquireSingleInstance())
+            {
+                MessageBox.Show("JiYu Killer 已经在运行。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+                AppRuntime.WriteCrashReport(e.ExceptionObject as Exception);
             try
             {
                 Run();
