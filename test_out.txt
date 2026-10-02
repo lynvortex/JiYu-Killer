@@ -1,0 +1,90 @@
+PASS DmocShutdown len=582
+PASS DmocShutdown magic
+PASS DmocShutdown ip@32
+PASS DmocShutdown op=0x10000014
+PASS DmocShutdown text
+PASS DmocShutdown 其余字节与模板一致
+PASS DmocTeacherReboot op=0x10000013
+PASS DmocForceReboot op=19
+PASS DmocCloseApps op=2
+PASS NotepadLaunch len=893
+PASS NotepadLaunch ip@19
+PASS NotepadLaunch path
+PASS CmdC len=565+cmd*2
+PASS CmdC ip@19
+PASS CmdC tail=/c <cmd>
+PASS CmdC datalen@23/@27=总长-28
+PASS CmdK tail=/k dir
+PASS CmdK ip@19
+PASS CmdK datalen@23/@27=总长-28
+PASS Msg header4605
+PASS Msg ip@12
+PASS Msg text
+PASS Msg header4705
+PASS Launch 原路径还原模板(893B)
+PASS Launch calc 头部同族
+PASS Launch calc ip@19
+PASS Launch calc 路径@47
+PASS Launch calc datalen@23/@27
+PASS Launch 长度随路径变化
+PASS Launch 尾部 0x01 保留
+PASS Launch 预设数量一致
+PASS Unlock len=43
+PASS Unlock ip@19
+PASS Unlock op=5@39
+PASS HiddenCmd len=906(datalen878+28)
+PASS HiddenCmd magic DMOC
+PASS HiddenCmd datalen@8=878
+PASS HiddenCmd ip@12
+PASS HiddenCmd cmd@16
+PASS HiddenCmd 其余补零
+PASS HiddenCmd4705 datalen@8=926
+PASS HiddenCmd /h 前缀被剥离
+PASS HiddenCmd 不同可见包(CmdC)
+PASS HiddenCmd 4988 用 2021 族头(926)
+PASS HiddenCmd 超长命令 datalen@8 写回
+PASS IPGen /24 count=254
+PASS IPGen first=10.132.5.1
+PASS IPGen last=10.132.5.254
+PASS IPGen /31 count=2
+PASS IPGen /8 被拒绝
+PASS IPGen /15 被拒绝
+PASS IPGen /16 仍可用(65534)
+PASS IPGen 短格式网段拒绝
+PASS 严格解析 4 段通过
+PASS 严格解析 3 段拒绝
+PASS 严格解析 5 段拒绝
+PASS 严格解析 超界拒绝
+PASS 严格解析 空段拒绝
+PASS 严格解析 空串拒绝
+PASS 严格解析 null 拒绝
+PASS 净化 拒绝引号
+PASS 净化 去首尾空白
+PASS 净化 保留 & | ^ <>
+PASS 净化 拒绝 %
+PASS 净化 拒绝控制字符
+PASS StartOpen 整体引号包裹
+PASS StartOpen ip@19
+PASS StartOpen 引号闭合注入被拒绝
+PASS StartOpen & 为字面量落地
+PASS Unlock4705 len=56
+PASS Unlock4705 DMOC 头
+PASS Unlock4705 ip@32
+PASS Unlock4705 op=5@52
+PASS Unlock4705 会话 dc 前缀
+PASS Unlock4605 仍为原 43B
+PASS Op6 len=177
+PASS Op6 datalen=149
+PASS Op6 ip@32
+PASS Op6 op=6@52
+PASS Op6 其余字节不动
+PASS Op6 无越界写入
+PASS 2010 port=4605
+PASS 2021新版 port=4988
+PASS 2021旧版 port=4705
+PASS knock1 解码 ASCII 密码
+PASS knock1 解码 中文密码
+PASS knock1 空数据返回 null
+PASS 万能密码常量
+
+ALL TESTS PASSED

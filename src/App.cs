@@ -73,7 +73,11 @@ namespace JiYuKiller
             if (agreed != true)
             {
                 if (disclaimer.MarkImportantComputer)
-                    PromiseMark.Write();
+                {
+                    // 标记写入是尽力而为: 目录只读等场景写不进也不应崩溃
+                    try { PromiseMark.Write(); }
+                    catch { }
+                }
                 return;
             }
 

@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="JiYuKiller.app"/>
+  <assemblyIdentity version="1.1.0.0" name="JiYuKiller.app"/>
   <!-- 原版行为: asInvoker + 每次高危操作前检测管理员权限并提示 -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>

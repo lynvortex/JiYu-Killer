@@ -19,8 +19,9 @@ namespace JiYuKiller.Core
                 throw new FormatException("格式应为 网段/前缀长度，示例: 10.132.5.0/24");
 
             IPAddress baseIp;
-            if (!IPAddress.TryParse(cidr.Substring(0, slash).Trim(), out baseIp)
-                || baseIp.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            // 与发送侧一致用严格解析: TryParse 过于宽松, "10.132.5" 会静默变成 10.132.0.5,
+            // 导致展开整个错误网段
+            if (!JySender.TryParseIpv4(cidr.Substring(0, slash).Trim(), out baseIp))
                 throw new FormatException("不是一个有效的ipv4网段");
 
             int prefix;

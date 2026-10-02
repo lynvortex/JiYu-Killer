@@ -53,12 +53,17 @@ static class PacketTest
         Check("CmdC ip@19", c1[19] == 10 && c1[20] == 132 && c1[21] == 5 && c1[22] == 66);
         string tail = Encoding.Unicode.GetString(c1, 559, c1.Length - 559);
         Check("CmdC tail=/c <cmd>", tail == "/c taskkill /f /im studentmain.exe");
+        // datalen 写回回归: 模板捕获值 865 对应原版 893B 整包, 拼接命令后必须写回 总长-28
+        Check("CmdC datalen@23/@27=总长-28", BitConverter.ToInt32(c1, 23) == c1.Length - 28
+              && BitConverter.ToInt32(c1, 27) == c1.Length - 28);
 
         // 远程命令 (/k)
         var c2 = JyPackets.BuildCommand(ip, "dir", false);
         string tail2 = Encoding.Unicode.GetString(c2, 559, c2.Length - 559);
         Check("CmdK tail=/k dir", tail2 == "/k dir");
         Check("CmdK ip@19", c2[19] == 10);
+        Check("CmdK datalen@23/@27=总长-28", BitConverter.ToInt32(c2, 23) == c2.Length - 28
+              && BitConverter.ToInt32(c2, 27) == c2.Length - 28);
 
         // 消息
         var m = JyPackets.BuildMessage(ip, "Hello 你好", 4605);
@@ -103,6 +108,13 @@ static class PacketTest
         Check("HiddenCmd /h 前缀被剥离", Encoding.Unicode.GetString(h2, 16, 4) == "ta");
         var h3 = JyPackets.BuildHiddenCommand(ip, "dir", 4605);
         Check("HiddenCmd 不同可见包(CmdC)", !h3.SequenceEqual(JyPackets.BuildCommand(ip, "dir", false)));
+        // 头选择与 BuildMessage 统一: 4988 走 2021 族头(原实现走 4605 头, 两处互相矛盾)
+        var h4 = JyPackets.BuildHiddenCommand(ip, "dir", 4988);
+        Check("HiddenCmd 4988 用 2021 族头(926)", BitConverter.ToInt32(h4, 8) == 926);
+        // 命令超长导致包体超过 datalen+28 时, datalen@8 按实际长度写回
+        var hLong = JyPackets.BuildHiddenCommand(ip, new string('a', 600), 4605);
+        Check("HiddenCmd 超长命令 datalen@8 写回", hLong.Length > 906
+              && BitConverter.ToInt32(hLong, 8) == hLong.Length - 28);
 
         // IP 生成器
         var hosts = IpGenerator.GenerateHosts("10.132.5.0/24");
@@ -123,6 +135,11 @@ static class PacketTest
         Check("IPGen /15 被拒绝", threwBig);
         var h16 = IpGenerator.GenerateHosts("172.16.0.0/16");
         Check("IPGen /16 仍可用(65534)", h16.Count == 65534);
+        // 严格解析回归: TryParse 会把 "10.132.5" 静默解析成 10.132.0.5, 展开整个错误网段
+        threwBig = false;
+        try { IpGenerator.GenerateHosts("10.132.5/24"); }
+        catch (FormatException) { threwBig = true; }
+        Check("IPGen 短格式网段拒绝", threwBig);
 
         // 审计修复回归: 严格 IPv4 解析（TryParse 会把 "10.132.5" 静默解析成 10.132.0.5）
         IPAddress parsed;
@@ -135,18 +152,21 @@ static class PacketTest
         Check("严格解析 空串拒绝", !JySender.TryParseIpv4("", out parsed));
         Check("严格解析 null 拒绝", !JySender.TryParseIpv4(null, out parsed));
 
-        // 审计修复回归: 打开文件/网页的参数净化（防 cmd 注入）
-        Check("净化 引号翻倍", JyPackets.SanitizeStartArgument("a\"b") == "a\"\"b");
+        // 审计修复回归: 打开文件/网页的参数净化（防 cmd 注入; 引号直接拒绝, 不再翻倍）
+        bool threwSan = false;
+        try { JyPackets.SanitizeStartArgument("a\"b"); }
+        catch (FormatException) { threwSan = true; }
+        Check("净化 拒绝引号", threwSan);
         Check("净化 去首尾空白", JyPackets.SanitizeStartArgument("  x  ") == "x");
         Check("净化 保留 & | ^ <>", JyPackets.SanitizeStartArgument("a&b|c") == "a&b|c");
-        bool threwSan = false;
+        bool threwPct = false;
         try { JyPackets.SanitizeStartArgument("100%t"); }
-        catch (FormatException) { threwSan = true; }
-        Check("净化 拒绝 %", threwSan);
-        threwSan = false;
+        catch (FormatException) { threwPct = true; }
+        Check("净化 拒绝 %", threwPct);
+        threwPct = false;
         try { JyPackets.SanitizeStartArgument("a\nb"); }
-        catch (FormatException) { threwSan = true; }
-        Check("净化 拒绝控制字符", threwSan);
+        catch (FormatException) { threwPct = true; }
+        Check("净化 拒绝控制字符", threwPct);
         var so = JyPackets.BuildStartOpen(ip, "https://x.com/?a=1&b=2");
         string soTail = Encoding.Unicode.GetString(so, 559, so.Length - 559);
         Check("StartOpen 整体引号包裹", soTail == "/c start \"\" \"https://x.com/?a=1&b=2\"");
@@ -154,10 +174,10 @@ static class PacketTest
         threwSan = false;
         try { JyPackets.BuildStartOpen(ip, "x\" & calc"); }
         catch (FormatException) { threwSan = true; }
-        Check("StartOpen 含%拒绝(带&不再拒绝)", !threwSan);
-        var so2 = JyPackets.BuildStartOpen(ip, "a\"b");
+        Check("StartOpen 引号闭合注入被拒绝", threwSan);
+        var so2 = JyPackets.BuildStartOpen(ip, "a&b");
         string so2Tail = Encoding.Unicode.GetString(so2, 559, so2.Length - 559);
-        Check("StartOpen 引号翻倍落地", so2Tail == "/c start \"\" \"a\"\"b\"");
+        Check("StartOpen & 为字面量落地", so2Tail == "/c start \"\" \"a&b\"");
 
         // 翘课3.0 移植: 4705 解锁包 + op=6 指令包
         var u47 = JyPackets.BuildUnlockForPort(ip, 4705);

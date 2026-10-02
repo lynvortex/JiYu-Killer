@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -16,6 +16,8 @@ namespace JiYuKiller.Core
 
         public static int VersionIndex;
         public static bool UseGlobalBroadcast;
+        /// <summary>版本已确认（自动检测成功或用户手动选定）。未确认前远程操作会先弹确认。</summary>
+        public static bool VersionConfirmed;
         /// <summary>主题: "dark"（默认）或 "light"。</summary>
         public static string Theme = "dark";
         /// <summary>命令历史（最近在后）。</summary>
@@ -40,6 +42,7 @@ namespace JiYuKiller.Core
                     if (key == "version") { int v; if (int.TryParse(val, out v)) VersionIndex = v; }
                     else if (key == "global_broadcast") UseGlobalBroadcast = val == "1";
                     else if (key == "theme" && IsValidTheme(val)) Theme = val;
+                    else if (key == "version_confirmed") VersionConfirmed = val == "1";
                     else if (key == "history") AddHistory(val, save: false);
                 }
             }
@@ -57,6 +60,7 @@ namespace JiYuKiller.Core
                     "version=" + VersionIndex,
                     "global_broadcast=" + (UseGlobalBroadcast ? "1" : "0"),
                     "theme=" + Theme,
+                    "version_confirmed=" + (VersionConfirmed ? "1" : "0"),
                 };
                 // 历史逐条存（单行输入框不可能含换行, 直接存）
                 foreach (string h in History)

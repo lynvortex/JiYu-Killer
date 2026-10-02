@@ -26,6 +26,23 @@ namespace JiYuKiller.Core
             get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "targets.txt"); }
         }
 
+        /// <summary>
+        /// 名单里的进程名会被拼进 taskkill / cmd 命令行执行,
+        /// 含 cmd 元字符(&amp;|&lt;&gt;^%"'! 等)或路径分隔符的行一律丢弃, 防止配置文件被替换后注入命令。
+        /// </summary>
+        private static readonly char[] ForbiddenChars =
+            { '&', '|', '<', '>', '^', '%', '"', '\'', '!', '/', '\\', ',', ';', '`' };
+
+        private static bool IsSafeProcessName(string name)
+        {
+            if (name.Length == 0 || name.Length > 260)
+                return false;
+            foreach (char c in name)
+                if (char.IsControl(c) || Array.IndexOf(ForbiddenChars, c) >= 0)
+                    return false;
+            return true;
+        }
+
         /// <summary>读取名单（targets.txt 不存在时写出默认名单并返回默认值）。</summary>
         public static List<string> Load()
         {
@@ -43,6 +60,8 @@ namespace JiYuKiller.Core
                     string line = raw.Trim();
                     if (line.Length == 0 || line.StartsWith("#") || line.StartsWith("//"))
                         continue;
+                    if (!IsSafeProcessName(line))
+                        continue;   // 非法字符行直接忽略
                     if (!list.Contains(line))
                         list.Add(line);
                 }

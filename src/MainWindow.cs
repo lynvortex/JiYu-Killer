@@ -80,10 +80,14 @@ namespace JiYuKiller.UI
                 EnableDarkTitleBar();
                 SetupTrayAndSelfHotkey();
             };
-            Closed += (s, e) => _closed = true;
+            Closed += (s, e) => ReleaseResources();
             BuildLayout();
             PreviewKeyDown += OnPreviewKeyDown;
-            Loaded += (s, e) => PlayEntryAnimation();
+            Loaded += (s, e) =>
+            {
+                PlayEntryAnimation();
+                AutoDetectVersionOnStartup();
+            };
         }
 
         private void EnableDarkTitleBar()
@@ -186,7 +190,7 @@ namespace JiYuKiller.UI
                 FontWeight = FontWeights.Bold,
                 Foreground = UiUtil.C.Text,
             });
-            logoText.Children.Add(new TextBlock { Text = "v1.0.0", FontSize = 11, Foreground = UiUtil.C.Muted });
+            logoText.Children.Add(new TextBlock { Text = "v1.1.0", FontSize = 11, Foreground = UiUtil.C.Muted });
             logo.Children.Add(logoText);
             stack.Children.Add(logo);
 
@@ -310,13 +314,8 @@ namespace JiYuKiller.UI
                 _jyComboBox.Items.Add(name);
             _jyComboBox.SelectedIndex = JyVersion.SelectedIndex;
             var ok = new Button { Content = "确定", MinWidth = 64, Margin = new Thickness(8, 0, 0, 0), Style = UiUtil.PrimaryButtonStyle() };
-            ok.Click += (s, e) =>
-            {
-                JyVersion.SetSelected(_jyComboBox.SelectedIndex);
-                Settings.VersionIndex = JyVersion.SelectedIndex;
-                Settings.Save();
-                AddInfo("极域版本已设置为: " + JyVersion.Names[JyVersion.SelectedIndex] + " (端口 " + JyVersion.Port + ")");
-            };
+            // 确定 = 重新检测: 优先从运行中的极域自动读取版本, 检测不到才用下拉框的值
+            ok.Click += (s, e) => RedetectVersionFromButton();
             versionBox.Children.Add(_jyComboBox);
             versionBox.Children.Add(ok);
             Grid.SetColumn(versionBox, 1);
@@ -834,7 +833,7 @@ namespace JiYuKiller.UI
             _adminStatus.Margin = new Thickness(18, 0, 0, 0);
             Grid.SetColumn(_adminStatus, 2);
             g.Children.Add(_adminStatus);
-            var ver = UiUtil.MakeText("JiYu Killer v1.0.0", 12, muted: true);
+            var ver = UiUtil.MakeText("JiYu Killer v1.1.0", 12, muted: true);
             ver.HorizontalAlignment = HorizontalAlignment.Right;
             Grid.SetColumn(ver, 4);
             g.Children.Add(ver);
@@ -843,6 +842,25 @@ namespace JiYuKiller.UI
         }
 
         // ------------------------------------------------------------------ theme / elevation
+
+        /// <summary>
+        /// 窗口关闭（退出或主题切换/导入配置重建）时统一释放:
+        /// 托盘图标不摘除会留幽灵图标; 状态轮询/热区的 DispatcherTimer 与
+        /// BossKey 引擎的热键不被释放会跨窗口生命周期继续运行。
+        /// 引擎先恢复全部隐藏窗口再停止 —— 程序退出后用户将无从恢复。
+        /// </summary>
+        private void ReleaseResources()
+        {
+            _closed = true;
+            if (_statusTimer != null) _statusTimer.Stop();
+            if (_hotzone != null) _hotzone.Dispose();
+            if (_bossKey != null)
+            {
+                try { _bossKey.RestoreAll(); } catch { }
+                _bossKey.Dispose();
+            }
+            if (_tray != null) _tray.Dispose();
+        }
 
         private void CloseOwnedWindows()
         {
@@ -890,9 +908,10 @@ namespace JiYuKiller.UI
         {
             var opt = new SendOptions();
             int v;
-            if (int.TryParse((_delayBox.Text ?? "").Trim(), out v) && v > 0) opt.DelaySeconds = v;
-            if (int.TryParse((_roundsBox.Text ?? "").Trim(), out v) && v > 0) opt.Rounds = v;
-            if (int.TryParse((_intervalBox.Text ?? "").Trim(), out v) && v > 0) opt.IntervalSeconds = v;
+            // 钳制上限: 延时秒→毫秒是 int 乘法, 不设上限时 >2147483 秒会溢出为负、延时被静默跳过
+            if (int.TryParse((_delayBox.Text ?? "").Trim(), out v) && v > 0) opt.DelaySeconds = Math.Min(v, 86400);
+            if (int.TryParse((_roundsBox.Text ?? "").Trim(), out v) && v > 0) opt.Rounds = Math.Min(v, 1000);
+            if (int.TryParse((_intervalBox.Text ?? "").Trim(), out v) && v > 0) opt.IntervalSeconds = Math.Min(v, 3600);
             return opt;
         }
 
@@ -1062,6 +1081,11 @@ namespace JiYuKiller.UI
         private void SendClick(Func<Func<IPAddress, byte[]>> builderFactory)
         {
             if (_busy) return;
+            if (!VersionGate.EnsureConfirmed(this, AddInfo))
+            {
+                _jyComboBox.SelectedIndex = JyVersion.SelectedIndex;
+                return;
+            }
             Func<IPAddress, byte[]> builder;
             try
             {
@@ -1089,6 +1113,11 @@ namespace JiYuKiller.UI
         private void LaunchClick()
         {
             if (_busy) return;
+            if (!VersionGate.EnsureConfirmed(this, AddInfo))
+            {
+                _jyComboBox.SelectedIndex = JyVersion.SelectedIndex;
+                return;
+            }
             int idx = _launchComboBox.SelectedIndex;
             if (idx < 0 || idx >= JyPackets.LaunchPresets.Length) return;
             string path = JyPackets.LaunchPresets[idx];
@@ -1104,6 +1133,11 @@ namespace JiYuKiller.UI
         private void BasicClick()
         {
             if (_busy) return;
+            if (!VersionGate.EnsureConfirmed(this, AddInfo))
+            {
+                _jyComboBox.SelectedIndex = JyVersion.SelectedIndex;
+                return;
+            }
             var op = (JyPackets.BasicOp)_orderComboBox.SelectedIndex;
             SetBusy(true);
             AddInfo("正在发送命令, 请稍候...");
@@ -1397,7 +1431,7 @@ namespace JiYuKiller.UI
 
             root.Children.Add(new TextBlock
             {
-                Text = "JiYu Killer  v1.0.0",
+                Text = "JiYu Killer  v1.1.0",
                 FontSize = 19,
                 FontWeight = FontWeights.Bold,
                 Foreground = UiUtil.C.Text,
@@ -1497,6 +1531,62 @@ namespace JiYuKiller.UI
                 handled = true;
             }
             return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// 每次启动都尝试从运行中的极域读取版本:
+        ///   检测成功 -> 自动应用（与保存值不同时提示）;
+        ///   检测失败 -> 从未确认过则弹手动确认框（含可能的极域软件位置）, 已确认过则沿用上次设置。
+        /// </summary>
+        private void AutoDetectVersionOnStartup()
+        {
+            int detected = JyLocator.DetectVersionIndex();
+            if (detected >= 0)
+            {
+                bool changed = detected != JyVersion.SelectedIndex;
+                JyVersion.SetSelected(detected);
+                Settings.VersionIndex = detected;
+                Settings.VersionConfirmed = true;
+                Settings.Save();
+                _jyComboBox.SelectedIndex = detected;
+                AddInfo((changed ? "检测到极域版本变化, 已自动切换: " : "已自动检测极域版本: ")
+                    + JyVersion.ConfirmText(JyVersion.Names[detected]));
+            }
+            else if (!Settings.VersionConfirmed)
+            {
+                if (VersionGate.EnsureConfirmed(this, AddInfo))
+                    _jyComboBox.SelectedIndex = JyVersion.SelectedIndex;
+                else
+                    AddInfo("极域版本未确认 —— 远程发送前会再次询问。");
+            }
+            else
+            {
+                _jyComboBox.SelectedIndex = JyVersion.SelectedIndex;
+                AddInfo("未检测到运行中的极域, 沿用上次设置: " + JyVersion.Names[JyVersion.SelectedIndex]
+                    + " (" + JyVersion.ConfirmText(JyVersion.Names[JyVersion.SelectedIndex]) + "); \"确定\"可重新检测。");
+            }
+        }
+
+        /// <summary>重新检测极域版本（顶栏"确定"按钮: 检测成功优先, 失败用下拉框选择）。</summary>
+        private void RedetectVersionFromButton()
+        {
+            int detected = JyLocator.DetectVersionIndex();
+            if (detected >= 0)
+            {
+                JyVersion.SetSelected(detected);
+                Settings.VersionIndex = detected;
+                Settings.VersionConfirmed = true;
+                Settings.Save();
+                _jyComboBox.SelectedIndex = detected;
+                AddInfo("已从运行中的极域自动读取版本: " + JyVersion.ConfirmText(JyVersion.Names[detected]));
+                return;
+            }
+            JyVersion.SetSelected(_jyComboBox.SelectedIndex);
+            Settings.VersionIndex = JyVersion.SelectedIndex;
+            Settings.VersionConfirmed = true;
+            Settings.Save();
+            AddInfo("未检测到运行中的极域, 已按手动选择: " + JyVersion.Names[JyVersion.SelectedIndex]
+                + " (" + JyVersion.ConfirmText(JyVersion.Names[JyVersion.SelectedIndex]) + ")");
         }
 
         private static class NativeMethods

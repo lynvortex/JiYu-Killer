@@ -50,8 +50,6 @@ namespace JiYuKiller.Core
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 
-        private const uint ProcessTerminate = 0x0001;
-        private const uint ProcessSuspendResume = 0x0800;
         private const uint TokenAdjustPrivileges = 0x20, TokenQuery = 0x8;
         private const uint WmClose = 0x0010, WmQuit = 0x0012;
 
@@ -83,7 +81,11 @@ namespace JiYuKiller.Core
                     };
                     if (!LookupPrivilegeValue(null, "SeDebugPrivilege", ref tp.Privileges.Luid))
                         return false;
-                    return AdjustTokenPrivileges(token, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+                    // AdjustTokenPrivileges 返回 true 不代表权限已生效,
+                    // 未持有该特权时 GetLastError = ERROR_NOT_ALL_ASSIGNED(1300)
+                    if (!AdjustTokenPrivileges(token, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero))
+                        return false;
+                    return Marshal.GetLastWin32Error() != 1300;
                 }
                 finally { CloseHandle(token); }
             }

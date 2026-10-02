@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using JiYuKiller.Core;
@@ -43,7 +44,7 @@ namespace JiYuKiller.UI
             catch { }
 
             var saveBtn = new Button { Content = "保存并关闭", MinWidth = 100, Height = 30 };
-            saveBtn.Click += (s, e) => { Save(); DialogResult = true; };
+            saveBtn.Click += (s, e) => Save();
             var cancelBtn = new Button { Content = "取消", MinWidth = 80, Height = 30, Margin = new Thickness(12, 0, 0, 0) };
             cancelBtn.Click += (s, e) => DialogResult = false;
             var buttons = new StackPanel
@@ -64,9 +65,19 @@ namespace JiYuKiller.UI
             Content = root;
         }
 
+        /// <summary>保存成功时关闭窗口；失败（如目录只读）提示后保持打开。</summary>
         private void Save()
         {
-            File.WriteAllText(JySender.IpFilePath, _editor.Text);
+            try
+            {
+                File.WriteAllText(JySender.IpFilePath, _editor.Text);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("保存失败: " + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            DialogResult = true;
         }
     }
 }

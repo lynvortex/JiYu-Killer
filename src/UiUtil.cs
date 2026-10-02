@@ -399,7 +399,8 @@ namespace JiYuKiller.UI
                     Margin = new Thickness(0, 0, 0, 8),
                 });
             }
-            root.Children.Add(content);
+            if (content != null)
+                root.Children.Add(content);
             return new Border
             {
                 Background = C.Card,

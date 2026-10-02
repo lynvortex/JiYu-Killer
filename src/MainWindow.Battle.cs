@@ -243,17 +243,53 @@ namespace JiYuKiller.UI
             AddInfo(block ? "正在阻断极域联网…" : "正在恢复极域联网…");
             Task.Run(() =>
             {
-                try
-                {
-                    string action = block ? "block" : "allow";
-                    int rc = LocalOps.RunCmd("netsh advfirewall firewall set rule name=\"StudentMain.exe\" new action=" + action);
-                    if (rc != 0)
-                        rc = LocalOps.RunCmd("netsh advfirewall firewall add rule name=\"StudentMain.exe\" dir=out action=" + action + " program=\"StudentMain.exe\"");
-                    Dispatcher.Invoke(() => AddInfo((block ? "防火墙阻断" : "恢复联网") + (rc == 0 ? "成功。" : "命令返回 " + rc + " (可能需要管理员权限)。")));
-                }
-                catch (Exception ex) { AddInfo("[错误] " + ex.Message); }
+                string result;
+                try { result = FirewallRule(block); }
+                catch (Exception ex) { result = "[错误] " + ex.Message; }
+                Dispatcher.Invoke(() => AddInfo(result));
                 SetBusy(false);
             });
+        }
+
+        /// <summary>
+        /// 执行 netsh 防火墙规则变更并返回结果描述。
+        /// program= 必须是完整路径(netsh 不接受裸文件名); 入站+出站各一条规则,
+        /// 因为教师端指令是入站 UDP, 只挡出站拦不住控制通道。
+        /// </summary>
+        private static string FirewallRule(bool block)
+        {
+            const string ruleName = "StudentMain.exe";
+            if (!block)
+            {
+                int del = LocalOps.RunCmd("netsh advfirewall firewall delete rule name=\"" + ruleName + "\"");
+                if (del == 0)
+                    return "恢复联网成功 (已删除本工具添加的防火墙规则)。";
+                int allow = LocalOps.RunCmd("netsh advfirewall firewall set rule name=\"" + ruleName + "\" new action=allow");
+                return allow == 0
+                    ? "恢复联网成功 (已有规则改回允许)。"
+                    : "恢复失败 (delete=" + del + ", set=" + allow + ", 可能需要管理员权限)。";
+            }
+
+            int set = LocalOps.RunCmd("netsh advfirewall firewall set rule name=\"" + ruleName + "\" new action=block");
+            if (set == 0)
+                return "防火墙阻断成功 (已有规则改为阻止, 覆盖入站+出站)。";
+
+            string exe = FindStudentMainExe();
+            if (exe == null)
+                return "[错误] 未找到 StudentMain.exe 的安装路径, 无法新建防火墙规则 (set 命令返回 " + set + ")。";
+            int ro = LocalOps.RunCmd("netsh advfirewall firewall add rule name=\"" + ruleName + "\" dir=out action=block program=\"" + exe + "\"");
+            int ri = LocalOps.RunCmd("netsh advfirewall firewall add rule name=\"" + ruleName + "\" dir=in action=block program=\"" + exe + "\"");
+            return (ro == 0 && ri == 0)
+                ? "防火墙阻断成功 (新建入站+出站规则: " + exe + ")。"
+                : "[错误] 新建规则失败 (out=" + ro + ", in=" + ri + ", 可能需要管理员权限)。";
+        }
+
+        private static string FindStudentMainExe()
+        {
+            string install = JyLocator.DetectInstallPath();
+            if (install == null) return null;
+            string candidate = System.IO.Path.Combine(install, "StudentMain.exe");
+            return System.IO.File.Exists(candidate) ? candidate : null;
         }
 
         private CornerHotzone EnsureHotzone()

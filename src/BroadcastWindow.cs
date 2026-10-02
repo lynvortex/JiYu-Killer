@@ -42,7 +42,6 @@ namespace JiYuKiller.Core
         private static readonly IntPtr HwndNotopmost = new IntPtr(-2);
         private const uint SwpNozorder = 0x4, SwpFramechanged = 0x20;
 
-        private static readonly IntPtr[] SavedRects = new IntPtr[2];   // 简化: 记录是否已窗口化
         private static bool _renderWindowed, _blackWindowed;
 
         public static bool IsBroadcasting()

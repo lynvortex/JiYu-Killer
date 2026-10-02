@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -30,33 +30,89 @@ namespace JiYuKiller.Core
             public bool Frozen;
         }
 
-        /// <summary>当前状态快照（UI 状态面板每秒轮询）。</summary>
+        /// <summary>当前状态快照（UI 状态面板每秒轮询）。进程只枚举一次, 广播/黑屏检测无条件执行。</summary>
         public static Status Probe(bool frozenFlag)
         {
             var st = new Status { Frozen = frozenFlag };
-            foreach (string name in JyTargets.Load())
-            {
-                foreach (var p in Process.GetProcesses())
-                {
-                    try
-                    {
-                        if (!string.Equals(p.ProcessName + ".exe", name, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        st.Running = true;
-                        st.Pid = p.Id;
-                        st.ProcessName = p.ProcessName + ".exe";
-                        try { st.Path = p.MainModule.FileName; } catch { }
-                        try { st.Version = p.MainModule.FileVersionInfo.ProductVersion ?? p.MainModule.FileVersionInfo.FileVersion ?? "-"; }
-                        catch { }
-                        return st;   // 取第一个命中的主进程
-                    }
-                    catch { }
-                    finally { p.Dispose(); }
-                }
-            }
             st.Broadcasting = BroadcastWindow.IsBroadcasting();
             st.BlackScreen = BroadcastWindow.IsBlackScreen();
+            var names = JyTargets.Load();
+            foreach (var p in Process.GetProcesses())
+            {
+                try
+                {
+                    if (!IsTarget(p, names)) continue;
+                    st.Running = true;
+                    st.Pid = p.Id;
+                    st.ProcessName = p.ProcessName + ".exe";
+                    try { st.Path = p.MainModule.FileName; } catch { }
+                    try { st.Version = p.MainModule.FileVersionInfo.ProductVersion ?? p.MainModule.FileVersionInfo.FileVersion ?? "-"; }
+                    catch { }
+                    break;   // 取第一个命中的主进程
+                }
+                catch { }
+                finally { p.Dispose(); }
+            }
             return st;
+        }
+
+        /// <summary>进程名是否命中名单（p.ProcessName 在进程恰好退出时会抛异常, 调用方需兜底）。</summary>
+        private static bool IsTarget(Process p, List<string> names)
+        {
+            string exe = p.ProcessName + ".exe";
+            foreach (string name in names)
+                if (string.Equals(exe, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// 从运行中的极域进程读取版本信息并推断版本下标（JyVersion.Names 的 0..4）。
+        /// 依据: 安装目录名关键字（2021/2020/2016/2015/2010、豪华、专版）+ ProductVersion 主版本号。
+        /// 返回 -1 表示无法判断。
+        /// </summary>
+        public static int DetectVersionIndex()
+        {
+            var names = JyTargets.Load();
+            foreach (var p in Process.GetProcesses())
+            {
+                int result = -1;
+                try
+                {
+                    if (!IsTarget(p, names)) continue;
+                    string path = null, productVersion = null;
+                    try { path = p.MainModule.FileName; } catch { }
+                    try { productVersion = p.MainModule.FileVersionInfo.ProductVersion; } catch { }
+                    string hay = ((path ?? "") + " " + (productVersion ?? ""));
+                    if (hay.Contains("2021")) result = 3;             // 2021 新版 -> 4988
+                    else if (hay.Contains("2020") || hay.Contains("豪华")) result = 2;  // 2020 豪华 -> 4705
+                    else if (hay.Contains("2016") || productVersion != null && productVersion.StartsWith("6"))
+                        result = 2;                                    // v6.x -> 4705
+                    else if (hay.Contains("2015")) result = 1;
+                    else if (hay.Contains("2010") || productVersion != null && productVersion.StartsWith("5"))
+                        result = 0;                                    // v5.x -> 4605
+                    if (result >= 0)
+                    {
+                        // 2021 有新旧两个端口批次, 目录含"旧"字样或 ProductVersion 4.x 时用 4705
+                        if (result == 3 && (hay.Contains("旧") || (productVersion != null && productVersion.StartsWith("4"))))
+                            result = 4;
+                    }
+                }
+                catch { }
+                finally { p.Dispose(); }
+                if (result >= 0) return result;
+            }
+            // 进程未运行: 退化为注册表卸载信息里的目录名关键字
+            string path2 = FromRegistry();
+            if (path2 != null)
+            {
+                if (path2.Contains("2021")) return 3;
+                if (path2.Contains("2020") || path2.Contains("豪华")) return 2;
+                if (path2.Contains("2016")) return 2;
+                if (path2.Contains("2015")) return 1;
+                if (path2.Contains("2010") || path2.Contains("e-Learning")) return 0;   // V4 目录名
+            }
+            return -1;
         }
 
         /// <summary>三级路径识别。返回极域安装目录或 null。</summary>
@@ -108,19 +164,16 @@ namespace JiYuKiller.Core
 
         private static string FromRunningProcess()
         {
-            foreach (string name in JyTargets.Load())
+            var names = JyTargets.Load();
+            foreach (var p in Process.GetProcesses())
             {
-                foreach (var p in Process.GetProcesses())
+                try
                 {
-                    try
-                    {
-                        if (!string.Equals(p.ProcessName + ".exe", name, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        return Path.GetDirectoryName(p.MainModule.FileName);
-                    }
-                    catch { }
-                    finally { p.Dispose(); }
+                    if (!IsTarget(p, names)) continue;
+                    return Path.GetDirectoryName(p.MainModule.FileName);
                 }
+                catch { }
+                finally { p.Dispose(); }
             }
             return null;
         }

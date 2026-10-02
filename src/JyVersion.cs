@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace JiYuKiller.Core
 {
@@ -31,6 +31,21 @@ namespace JiYuKiller.Core
         public static int Port
         {
             get { return Ports[SelectedIndex]; }
+        }
+
+        /// <summary>日志用端口文案: 多端口模式下不再写"某某版本(端口X)", 只写多端口。</summary>
+        public static string PortText()
+        {
+            return MultiPort ? "多端口 4605+4705+4988" : "端口 " + Port;
+        }
+
+        /// <summary>
+        /// 确认类日志的版本描述: 多端口模式下不报具体版本名
+        /// (此时版本不影响发送行为), 只报"多端口齐发"; 单端口时报"版本名 (端口 X)"。
+        /// </summary>
+        public static string ConfirmText(string versionName)
+        {
+            return MultiPort ? "多端口齐发 (4605 + 4705 + 4988)" : versionName + " (端口 " + Port + ")";
         }
 
         public static void SetSelected(int index)

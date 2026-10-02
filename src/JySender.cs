@@ -79,7 +79,10 @@ namespace JiYuKiller.Core
         {
             lock (Gate)
             {
-                if (_cts != null) _cts.Dispose();
+                // 只 Cancel 不 Dispose: 上一个发送任务可能仍阻塞在该 token 的
+                // WaitHandle 上, 立即 Dispose 会使其抛 ObjectDisposedException。
+                // 旧 CTS 不再被引用后由 GC 回收。
+                if (_cts != null) _cts.Cancel();
                 _cts = new CancellationTokenSource();
                 return _cts.Token;
             }
@@ -145,7 +148,7 @@ namespace JiYuKiller.Core
         /// </summary>
         public static void SendKill(Action<string> log, Action onDone, Action<Exception> onError)
         {
-            var token = BeginScope();
+            BeginScope();   // 取消进行中的其他发送
             Task.Run(() =>
             {
                 try

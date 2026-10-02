@@ -16,7 +16,7 @@ namespace JiYuKiller.Core
             }
         }
 
-        /// <summary>隐藏窗口执行命令并返回退出码（原版 os.system）。</summary>
+        /// <summary>隐藏窗口执行命令并返回退出码（原版 os.system）。60 秒未退出强制结束并返回 -1。</summary>
         public static int RunCmd(string command)
         {
             var psi = new ProcessStartInfo
@@ -28,7 +28,11 @@ namespace JiYuKiller.Core
             };
             using (var p = Process.Start(psi))
             {
-                p.WaitForExit();
+                if (!p.WaitForExit(60000))
+                {
+                    try { p.Kill(); } catch { }
+                    return -1;
+                }
                 return p.ExitCode;
             }
         }
@@ -75,7 +79,6 @@ namespace JiYuKiller.Core
         [System.Runtime.InteropServices.DllImport("ntdll.dll")]
         private static extern int NtResumeProcess(IntPtr processHandle);
 
-        private const uint ProcessSuspendResume = 0x0800;
         private static readonly string[] JyProcessNames = { "StudentMain", "NCStu" };
 
         /// <summary>极域是否处于被本程序挂起的状态（状态面板用）。</summary>
