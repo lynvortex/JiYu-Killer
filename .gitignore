@@ -1,0 +1,20 @@
+# build output
+bin/
+*.exe
+*.dll
+*.pdb
+
+# user runtime data
+IP.txt
+jyconfig.ini
+crash.log
+trace.log
+
+# local screenshots from UIA test scripts
+shots/
+
+# IDE / OS
+.vs/
+*.user
+Thumbs.db
+Desktop.ini
